@@ -1,0 +1,67 @@
+
+def crear_venta(request):
+    from django.db import transaction
+    from django.contrib import messages
+    from django.shortcuts import render, redirect
+    from .models import Cliente, Producto, Venta, DetalleVenta
+
+    lista_productos = Producto.objects.all()
+
+    if request.method == 'POST':
+        nombre_cliente = request.POST.get('cliente', '').strip()
+        producto_id = request.POST.get('producto', '')
+        cantidad_texto = request.POST.get('cantidad', '').strip()
+
+        try:
+            cantidad = int(cantidad_texto)
+
+            if not nombre_cliente:
+                messages.error(request, 'Escribe el nombre del cliente.')
+            elif cantidad <= 0:
+                messages.error(request, 'La cantidad debe ser mayor que cero.')
+            elif not producto_id:
+                messages.error(request, 'Selecciona un producto.')
+            else:
+                producto = Producto.objects.get(pk=producto_id)
+
+                if cantidad > producto.cantidad:
+                    messages.error(
+                        request,
+                        'No hay suficiente inventario para esa venta.'
+                    )
+                else:
+                    with transaction.atomic():
+                        cliente, creado = Cliente.objects.get_or_create(
+                            nombre__iexact=nombre_cliente,
+                            defaults={'nombre': nombre_cliente}
+                        )
+
+                        venta = Venta.objects.create(cliente=cliente)
+
+                        DetalleVenta.objects.create(
+                            venta=venta,
+                            producto=producto,
+                            cantidad=cantidad,
+                            precio_unitario=producto.precio
+                        )
+
+                        producto.cantidad -= cantidad
+                        producto.save()
+
+                    messages.success(
+                        request,
+                        'Venta registrada correctamente.'
+                    )
+                    return redirect('ventas')
+
+        except (ValueError, TypeError):
+            messages.error(request, 'Escribe una cantidad válida.')
+        except Producto.DoesNotExist:
+            messages.error(request, 'El producto seleccionado no existe.')
+
+    return render(
+        request,
+        'ventas/crear_venta.html',
+        {'productos': lista_productos}
+    )
+
